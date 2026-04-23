@@ -12,6 +12,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from .database import save_prediction, update_actuals_for_ticker
+from .sentiment import get_sentiment
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +27,14 @@ TICKERS = [
     "ISRG","BKNG","NOW","AMAT","MU","SNOW","NET","CRWD","COIN","PYPL",
 ]
 
-FEATURE_COLS = ["ret1","ret3","ret5","ret10","sma_gap_5_10","sma_gap_10_20","vol10","vol20"]
+FEATURE_COLS = [
+    "ret1","ret3","ret5","ret10",
+    "sma_gap_5_10","sma_gap_10_20",
+    "vol10","vol20",
+    "sentiment",
+]
 
-def make_features(close):
+def make_features(close, sentiment_score=0.0):
     df = pd.DataFrame({"Close": close})
     df["ret1"]          = df["Close"].pct_change(1)
     df["ret3"]          = df["Close"].pct_change(3)
@@ -41,6 +47,7 @@ def make_features(close):
     df["sma_gap_10_20"] = sma10 / sma20  - 1
     df["vol10"]         = df["ret1"].rolling(10).std()
     df["vol20"]         = df["ret1"].rolling(20).std()
+    df["sentiment"]     = sentiment_score
     df["target"]        = (df["Close"].shift(-1) > df["Close"]).astype(int)
     return df.dropna().copy()
 
@@ -68,8 +75,8 @@ def train_and_predict(feat_df):
 
 def process_ticker(ticker, scan_time):
     try:
-        tk = yf.Ticker(ticker, session=SESSION)
-        df = tk.history(period="2y", interval="1d", auto_adjust=True)
+        tk    = yf.Ticker(ticker, session=SESSION)
+        df    = tk.history(period="2y", interval="1d", auto_adjust=True)
         if df.empty:
             return None
         close = df["Close"]
@@ -79,10 +86,18 @@ def process_ticker(ticker, scan_time):
         if len(close) < 120:
             return None
         update_actuals_for_ticker(ticker, close)
-        feat_df = make_features(close)
+        sentiment_data  = get_sentiment(ticker)
+        sentiment_score = sentiment_data["combined_score"]
+        sentiment_label = sentiment_data["label"]
+        total_headlines = sentiment_data["total_headlines"]
+        feat_df = make_features(close, sentiment_score)
         if len(feat_df) < 100:
             return None
         prob_up, prediction, recommendation, holdout_acc = train_and_predict(feat_df)
+        if sentiment_label == "POSITIVE" and recommendation == "BUY":
+            prob_up = min(prob_up * 1.05, 0.99)
+        elif sentiment_label == "NEGATIVE" and recommendation == "SELL":
+            prob_up = max(prob_up * 0.95, 0.01)
         price       = float(close.iloc[-1])
         ret5        = float(close.pct_change(5).iloc[-1] * 100)
         ret20       = float(close.pct_change(20).iloc[-1] * 100)
@@ -93,21 +108,30 @@ def process_ticker(ticker, scan_time):
             prob_up, prediction, recommendation,
             price=price, ret5=ret5, ret20=ret20,
             holdout_acc=holdout_acc if not np.isnan(holdout_acc) else None,
+            sentiment_score=sentiment_score,
+            sentiment_label=sentiment_label,
+            headline_count=total_headlines,
         )
         return {
-            "ticker": ticker, "price": price,
-            "prob_up": round(prob_up * 100, 1),
-            "prediction": prediction, "recommendation": recommendation,
-            "ret5": round(ret5, 2), "ret20": round(ret20, 2),
-            "holdout_acc": round(holdout_acc * 100, 1) if not np.isnan(holdout_acc) else None,
+            "ticker":           ticker,
+            "price":            price,
+            "prob_up":          round(prob_up * 100, 1),
+            "prediction":       prediction,
+            "recommendation":   recommendation,
+            "ret5":             round(ret5, 2),
+            "ret20":            round(ret20, 2),
+            "holdout_acc":      round(holdout_acc * 100, 1) if not np.isnan(holdout_acc) else None,
+            "sentiment_score":  round(sentiment_score, 3),
+            "sentiment_label":  sentiment_label,
+            "headline_count":   total_headlines,
         }
     except Exception as e:
         logger.warning(f"[{ticker}] failed: {e}")
         return None
 
-_scan_lock = asyncio.Lock()
+_scan_lock         = asyncio.Lock()
 _last_scan_results = []
-_last_scan_time = None
+_last_scan_time    = None
 
 async def run_full_scan():
     global _last_scan_results, _last_scan_time
@@ -120,7 +144,7 @@ async def run_full_scan():
             result = await loop.run_in_executor(None, process_ticker, ticker, scan_time)
             if result:
                 results.append(result)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(1.0)
         results.sort(key=lambda x: x["prob_up"], reverse=True)
         _last_scan_results = results
         _last_scan_time    = scan_time

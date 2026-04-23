@@ -7,3 +7,6 @@ numpy==1.26.4
 scikit-learn==1.5.2
 curl_cffi>=0.15.0
 protobuf>=3.19.0
+vaderSentiment==3.3.2
+beautifulsoup4>=4.11.1
+requests>=2.31.0

@@ -25,6 +25,9 @@ async def init_db():
                 ret5             REAL,
                 ret20            REAL,
                 holdout_acc      REAL,
+                sentiment_score  REAL,
+                sentiment_label  TEXT,
+                headline_count   INTEGER,
                 actual           TEXT,
                 correct          INTEGER,
                 created_at       TEXT DEFAULT (datetime('now'))
@@ -32,12 +35,30 @@ async def init_db():
             CREATE INDEX IF NOT EXISTS idx_pred_ticker ON predictions(ticker);
             CREATE INDEX IF NOT EXISTS idx_pred_target ON predictions(target_date);
             CREATE INDEX IF NOT EXISTS idx_pred_scan   ON predictions(scan_time);
+
+            CREATE TABLE IF NOT EXISTS sentiment_log (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticker          TEXT NOT NULL,
+                scan_time       TEXT NOT NULL,
+                combined_score  REAL,
+                label           TEXT,
+                headline_count  INTEGER,
+                yahoo_score     REAL,
+                google_score    REAL,
+                bing_score      REAL,
+                reddit_score    REAL,
+                sec_score       REAL,
+                finviz_score    REAL,
+                created_at      TEXT DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_sent_ticker ON sentiment_log(ticker);
         """)
         conn.commit()
 
 def save_prediction(scan_time, ticker, pred_date, target_date,
                     prob_up, prediction, recommendation,
-                    price=None, ret5=None, ret20=None, holdout_acc=None):
+                    price=None, ret5=None, ret20=None, holdout_acc=None,
+                    sentiment_score=None, sentiment_label=None, headline_count=None):
     with _get_conn() as conn:
         exists = conn.execute(
             "SELECT id FROM predictions WHERE ticker=? AND target_date=?",
@@ -47,12 +68,30 @@ def save_prediction(scan_time, ticker, pred_date, target_date,
             conn.execute("""
                 INSERT INTO predictions
                 (scan_time,ticker,prediction_date,target_date,
-                 prob_up,prediction,recommendation,price,ret5,ret20,holdout_acc,actual,correct)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL,NULL)
+                 prob_up,prediction,recommendation,price,ret5,ret20,holdout_acc,
+                 sentiment_score,sentiment_label,headline_count,actual,correct)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL)
             """, (scan_time, ticker, pred_date, target_date,
                   prob_up, prediction, recommendation,
-                  price, ret5, ret20, holdout_acc))
+                  price, ret5, ret20, holdout_acc,
+                  sentiment_score, sentiment_label, headline_count))
             conn.commit()
+
+def save_sentiment_log(ticker, scan_time, sentiment_data):
+    ss = sentiment_data.get("source_scores", {})
+    with _get_conn() as conn:
+        conn.execute("""
+            INSERT INTO sentiment_log
+            (ticker, scan_time, combined_score, label, headline_count,
+             yahoo_score, google_score, bing_score, reddit_score, sec_score, finviz_score)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """, (ticker, scan_time,
+              sentiment_data.get("combined_score"),
+              sentiment_data.get("label"),
+              sentiment_data.get("total_headlines"),
+              ss.get("yahoo"), ss.get("google"), ss.get("bing"),
+              ss.get("reddit"), ss.get("sec"), ss.get("finviz")))
+        conn.commit()
 
 def update_actuals_for_ticker(ticker, close_series):
     idx_map = {d.strftime("%Y-%m-%d"): i for i, d in enumerate(close_series.index)}
@@ -88,10 +127,9 @@ def fetch_latest_scan():
         ).fetchone()
         if not row:
             return []
-        scan_time = row["scan_time"]
         rows = conn.execute(
             "SELECT * FROM predictions WHERE scan_time=? ORDER BY prob_up DESC",
-            (scan_time,)
+            (row["scan_time"],)
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -105,7 +143,7 @@ def fetch_ticker_predictions(ticker, limit=100):
 
 def fetch_accuracy_stats():
     with _get_conn() as conn:
-        total = conn.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]
+        total    = conn.execute("SELECT COUNT(*) FROM predictions").fetchone()[0]
         resolved = conn.execute(
             "SELECT COUNT(*),AVG(correct) FROM predictions WHERE actual IS NOT NULL"
         ).fetchone()
@@ -114,20 +152,18 @@ def fetch_accuracy_stats():
                    COUNT(*) as predictions,
                    ROUND(AVG(correct)*100,1) as accuracy,
                    MAX(prediction_date) as last_date
-            FROM predictions
-            WHERE actual IS NOT NULL
-            GROUP BY ticker
-            ORDER BY accuracy DESC
+            FROM predictions WHERE actual IS NOT NULL
+            GROUP BY ticker ORDER BY accuracy DESC
         """).fetchall()
         last_scan = conn.execute(
             "SELECT scan_time FROM predictions ORDER BY id DESC LIMIT 1"
         ).fetchone()
     return {
         "total_predictions": total,
-        "resolved": resolved[0] or 0,
-        "overall_accuracy": round((resolved[1] or 0) * 100, 1),
-        "last_scan": last_scan[0] if last_scan else None,
-        "by_ticker": [dict(r) for r in by_ticker],
+        "resolved":          resolved[0] or 0,
+        "overall_accuracy":  round((resolved[1] or 0) * 100, 1),
+        "last_scan":         last_scan[0] if last_scan else None,
+        "by_ticker":         [dict(r) for r in by_ticker],
     }
 
 def fetch_top_picks(limit=10):
@@ -137,11 +173,17 @@ def fetch_top_picks(limit=10):
         ).fetchone()
         if not row:
             return []
-        scan_time = row["scan_time"]
         rows = conn.execute("""
             SELECT * FROM predictions
             WHERE scan_time=? AND recommendation='BUY'
-            ORDER BY prob_up DESC
-            LIMIT ?
-        """, (scan_time, limit)).fetchall()
+            ORDER BY prob_up DESC LIMIT ?
+        """, (row["scan_time"], limit)).fetchall()
+    return [dict(r) for r in rows]
+
+def fetch_sentiment_history(ticker, limit=30):
+    with _get_conn() as conn:
+        rows = conn.execute("""
+            SELECT * FROM sentiment_log
+            WHERE ticker=? ORDER BY id DESC LIMIT ?
+        """, (ticker, limit)).fetchall()
     return [dict(r) for r in rows]
