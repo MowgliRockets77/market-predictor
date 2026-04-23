@@ -18,6 +18,13 @@ primary_region = 'ewr'
     path = "/health"
     timeout = "10s"
 
+[env]
+  SQLITE_PATH = "/data/market.db"
+
+[[mounts]]
+  source = "market_data"
+  destination = "/data"
+
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'
