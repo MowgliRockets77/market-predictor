@@ -558,6 +558,7 @@ nav {
     </div>
     <div class="header-right">
       <div class="status-dot" id="status-dot"></div>
+      <button class="scan-btn" id="theme-btn" onclick="toggleTheme()" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border)">◑</button>
       <button class="scan-btn" id="trigger-btn" onclick="triggerScan()">SCAN</button>
     </div>
   </header>
@@ -944,6 +945,12 @@ function setStatus(live) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+function toggleTheme(){
+  const isLight=document.body.classList.toggle('light');
+  localStorage.setItem('theme',isLight?'light':'dark');
+  document.getElementById('theme-btn').textContent=isLight?'◐':'◑';
+}
+if(localStorage.getItem('theme')==='light'){document.body.classList.add('light');}
 loadScan();
 loadGlobalStats();
 // Auto-refresh every 5 minutes
