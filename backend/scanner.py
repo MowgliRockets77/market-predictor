@@ -14,6 +14,17 @@ from .database import save_prediction, update_actuals_for_ticker
 
 logger = logging.getLogger(__name__)
 
+# Fix for yfinance being blocked on cloud servers
+yf.utils.get_json = lambda url, proxy=None, session=None: {}
+
+import requests
+_SESSION = requests.Session()
+_SESSION.headers.update({
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+})
+
 TICKERS = [
     "AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA","AMD","AVGO","NFLX",
     "PLTR","JPM","XOM","LLY","UNH","JNJ","V","MA","COST","WMT",
@@ -65,8 +76,9 @@ def train_and_predict(feat_df):
 
 def process_ticker(ticker, scan_time):
     try:
-        df = yf.download(ticker, period="2y", interval="1d", progress=False, auto_adjust=True)
-        if df.empty or "Close" not in df:
+        tk = yf.Ticker(ticker, session=_SESSION)
+        df = tk.history(period="2y", interval="1d", auto_adjust=True)
+        if df.empty:
             return None
         close = df["Close"]
         if hasattr(close, "ndim") and close.ndim > 1:
@@ -116,7 +128,7 @@ async def run_full_scan():
             result = await loop.run_in_executor(None, process_ticker, ticker, scan_time)
             if result:
                 results.append(result)
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.5)
         results.sort(key=lambda x: x["prob_up"], reverse=True)
         _last_scan_results = results
         _last_scan_time    = scan_time
