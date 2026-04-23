@@ -1,1 +1,893 @@
-404: Not Found
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Predictor"/>
+<meta name="theme-color" content="#0a0e1a"/>
+<link rel="manifest" href="/manifest.json"/>
+<link rel="apple-touch-icon" href="/icon-192.png"/>
+<title>Market Predictor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+/* ── Reset & Variables ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0a0e1a;
+  --bg2:       #0f1424;
+  --bg3:       #161c30;
+  --border:    rgba(255,255,255,0.07);
+  --green:     #00e8a2;
+  --green-dim: rgba(0,232,162,0.12);
+  --red:       #ff4d6d;
+  --red-dim:   rgba(255,77,109,0.12);
+  --amber:     #ffb547;
+  --amber-dim: rgba(255,181,71,0.12);
+  --blue:      #4d9eff;
+  --text:      #e8eaf0;
+  --text2:     #8891aa;
+  --text3:     #505870;
+  --mono:      'Space Mono', monospace;
+  --sans:      'DM Sans', sans-serif;
+  --r:         10px;
+  --safe-top:  env(safe-area-inset-top, 0px);
+  --safe-bot:  env(safe-area-inset-bottom, 0px);
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  height: 100%;
+  overflow-x: hidden;
+}
+
+/* ── Scanline overlay ──────────────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 999; pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.03) 2px,
+    rgba(0,0,0,0.03) 4px
+  );
+}
+
+/* ── Layout ────────────────────────────────────────────────────────────── */
+#app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--safe-top);
+  padding-bottom: calc(70px + var(--safe-bot));
+}
+
+/* ── Header ────────────────────────────────────────────────────────────── */
+header {
+  padding: 18px 20px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: var(--safe-top);
+  background: var(--bg);
+  z-index: 10;
+}
+
+.logo {
+  display: flex; align-items: center; gap: 10px;
+}
+.logo-icon {
+  width: 32px; height: 32px;
+  background: var(--green);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono);
+  font-size: 14px; font-weight: 700;
+  color: #0a0e1a;
+}
+.logo-text {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+.logo-sub {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  letter-spacing: 0.12em;
+}
+
+.header-right { display: flex; align-items: center; gap: 10px; }
+
+.scan-btn {
+  background: var(--green);
+  color: #0a0e1a;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.scan-btn:hover { opacity: 0.85; }
+.scan-btn:disabled { opacity: 0.4; cursor: default; }
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--text3);
+}
+.status-dot.live {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+/* ── Pages ─────────────────────────────────────────────────────────────── */
+.page { display: none; flex: 1; overflow-y: auto; padding: 0 0 20px; }
+.page.active { display: block; }
+
+/* ── Section headers ───────────────────────────────────────────────────── */
+.section-header {
+  padding: 20px 20px 10px;
+  display: flex; align-items: baseline; gap: 8px;
+}
+.section-title {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text3);
+  text-transform: uppercase;
+}
+.section-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+}
+
+/* ── Stat row ──────────────────────────────────────────────────────────── */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 0 20px 16px;
+}
+.stat-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px 12px;
+}
+.stat-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--text3);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.stat-value {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+.stat-value.green { color: var(--green); }
+.stat-value.amber { color: var(--amber); }
+
+/* ── Ticker card ───────────────────────────────────────────────────────── */
+.cards { padding: 0 20px; display: flex; flex-direction: column; gap: 10px; }
+
+.ticker-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  position: relative;
+  overflow: hidden;
+}
+.ticker-card::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px;
+  border-radius: 3px 0 0 3px;
+}
+.ticker-card.buy::before  { background: var(--green); }
+.ticker-card.sell::before { background: var(--red); }
+.ticker-card.hold::before { background: var(--amber); }
+
+.ticker-card:hover {
+  border-color: rgba(255,255,255,0.14);
+  background: var(--bg3);
+}
+
+.card-top {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 12px;
+}
+.card-ticker {
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.card-price {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--text2);
+}
+.card-right { text-align: right; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.badge.buy  { background: var(--green-dim); color: var(--green); }
+.badge.sell { background: var(--red-dim);   color: var(--red); }
+.badge.hold { background: var(--amber-dim); color: var(--amber); }
+
+.card-bottom {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.card-metric-label {
+  font-size: 10px;
+  color: var(--text3);
+  margin-bottom: 3px;
+}
+.card-metric-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text2);
+}
+.card-metric-value.up   { color: var(--green); }
+.card-metric-value.down { color: var(--red); }
+
+/* ── Prob bar ──────────────────────────────────────────────────────────── */
+.prob-bar-wrap {
+  margin: 12px 0 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.prob-bar-bg {
+  flex: 1; height: 4px;
+  background: var(--bg3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.prob-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+.prob-bar-fill.up   { background: var(--green); }
+.prob-bar-fill.down { background: var(--red); }
+.prob-pct {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text2);
+  min-width: 38px;
+  text-align: right;
+}
+
+/* ── Last scan time ────────────────────────────────────────────────────── */
+.scan-time-bar {
+  padding: 8px 20px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  letter-spacing: 0.05em;
+}
+
+/* ── Ticker detail overlay ─────────────────────────────────────────────── */
+#detail-overlay {
+  display: none;
+  position: fixed; inset: 0; z-index: 100;
+  background: var(--bg);
+  overflow-y: auto;
+  padding-top: var(--safe-top);
+  padding-bottom: calc(20px + var(--safe-bot));
+}
+#detail-overlay.open { display: block; }
+
+.detail-header {
+  padding: 16px 20px;
+  display: flex; align-items: center; gap: 14px;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0;
+  background: var(--bg); z-index: 5;
+}
+.back-btn {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text);
+  font-size: 16px;
+}
+.detail-ticker {
+  font-family: var(--mono);
+  font-size: 20px; font-weight: 700;
+}
+
+.detail-body { padding: 20px; }
+
+.detail-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.detail-metric {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px;
+}
+.detail-metric-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--text3);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.detail-metric-value {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+.detail-metric-value.green { color: var(--green); }
+.detail-metric-value.red   { color: var(--red); }
+.detail-metric-value.amber { color: var(--amber); }
+
+/* ── Log table ─────────────────────────────────────────────────────────── */
+.log-section { margin-top: 20px; }
+.log-title {
+  font-family: var(--mono);
+  font-size: 10px; letter-spacing: 0.12em;
+  color: var(--text3); text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.log-table { width: 100%; border-collapse: collapse; }
+.log-table th {
+  font-family: var(--mono);
+  font-size: 9px; letter-spacing: 0.1em;
+  color: var(--text3); text-transform: uppercase;
+  text-align: left; padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.log-table td {
+  font-family: var(--mono);
+  font-size: 11px; color: var(--text2);
+  padding: 10px 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.log-table tr:last-child td { border-bottom: none; }
+.correct-yes { color: var(--green); }
+.correct-no  { color: var(--red); }
+.correct-pending { color: var(--text3); }
+
+/* ── Stats page ────────────────────────────────────────────────────────── */
+.accuracy-list { padding: 0 20px; display: flex; flex-direction: column; gap: 8px; }
+.accuracy-item {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px 16px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.acc-ticker {
+  font-family: var(--mono);
+  font-size: 14px; font-weight: 700;
+  color: var(--text);
+}
+.acc-preds {
+  font-size: 11px; color: var(--text3);
+  margin-top: 2px;
+}
+.acc-bar-wrap { flex: 1; margin: 0 16px; }
+.acc-bar-bg {
+  height: 4px; background: var(--bg3);
+  border-radius: 4px; overflow: hidden;
+}
+.acc-bar-fill {
+  height: 100%; border-radius: 4px;
+  background: var(--green);
+}
+.acc-pct {
+  font-family: var(--mono);
+  font-size: 14px; font-weight: 700;
+  color: var(--green);
+  min-width: 42px; text-align: right;
+}
+
+/* ── Bottom nav ────────────────────────────────────────────────────────── */
+nav {
+  position: fixed;
+  bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  width: 100%; max-width: 480px;
+  background: rgba(10,14,26,0.95);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  padding-bottom: var(--safe-bot);
+  z-index: 50;
+}
+.nav-btn {
+  flex: 1; border: none; background: none;
+  padding: 12px 8px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  cursor: pointer; transition: color 0.15s;
+  color: var(--text3);
+}
+.nav-btn.active { color: var(--green); }
+.nav-icon { font-size: 20px; line-height: 1; }
+.nav-label {
+  font-family: var(--mono);
+  font-size: 9px; letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── Loading skeleton ──────────────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg2) 25%, var(--bg3) 50%, var(--bg2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 6px;
+  height: 80px;
+}
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+/* ── Empty state ───────────────────────────────────────────────────────── */
+.empty {
+  padding: 60px 20px;
+  text-align: center;
+}
+.empty-icon { font-size: 40px; margin-bottom: 12px; }
+.empty-text {
+  font-family: var(--mono);
+  font-size: 12px; color: var(--text3);
+  letter-spacing: 0.05em;
+}
+
+/* ── Ticker search ─────────────────────────────────────────────────────── */
+.search-wrap { padding: 12px 20px 4px; }
+.search-input {
+  width: 100%;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 10px 14px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.search-input::placeholder { color: var(--text3); }
+.search-input:focus { border-color: var(--green); }
+
+/* ── Filter tabs ───────────────────────────────────────────────────────── */
+.filter-tabs {
+  display: flex; gap: 6px;
+  padding: 10px 20px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.filter-tabs::-webkit-scrollbar { display: none; }
+.filter-tab {
+  flex-shrink: 0;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-tab.active {
+  background: var(--green-dim);
+  border-color: var(--green);
+  color: var(--green);
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">Δ</div>
+      <div>
+        <div class="logo-text">PREDICTOR</div>
+        <div class="logo-sub">ML · 24/7 · LIVE</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="status-dot" id="status-dot"></div>
+      <button class="scan-btn" id="trigger-btn" onclick="triggerScan()">SCAN</button>
+    </div>
+  </header>
+
+  <!-- Page: Picks -->
+  <div class="page active" id="page-picks">
+    <div class="stat-row" id="stat-row">
+      <div class="stat-card"><div class="stat-label">Predictions</div><div class="stat-value" id="s-total">—</div></div>
+      <div class="stat-card"><div class="stat-label">Accuracy</div><div class="stat-value green" id="s-acc">—</div></div>
+      <div class="stat-card"><div class="stat-label">Last Scan</div><div class="stat-value amber" id="s-scan">—</div></div>
+    </div>
+    <div class="filter-tabs" id="filter-tabs">
+      <div class="filter-tab active" data-filter="all" onclick="setFilter('all')">ALL</div>
+      <div class="filter-tab" data-filter="BUY" onclick="setFilter('BUY')">BUY</div>
+      <div class="filter-tab" data-filter="SELL" onclick="setFilter('SELL')">SELL</div>
+      <div class="filter-tab" data-filter="HOLD" onclick="setFilter('HOLD')">HOLD</div>
+    </div>
+    <div class="search-wrap">
+      <input class="search-input" id="search-input" placeholder="Search ticker…" oninput="renderCards()" />
+    </div>
+    <div class="scan-time-bar" id="scan-time-bar"></div>
+    <div class="cards" id="cards-container">
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+    </div>
+  </div>
+
+  <!-- Page: Stats -->
+  <div class="page" id="page-stats">
+    <div class="section-header">
+      <div class="section-title">Per-Ticker Accuracy</div>
+      <div class="section-count" id="stats-count"></div>
+    </div>
+    <div class="accuracy-list" id="accuracy-list">
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+    </div>
+  </div>
+
+  <!-- Page: Log -->
+  <div class="page" id="page-log">
+    <div class="section-header">
+      <div class="section-title">Prediction Log</div>
+    </div>
+    <div style="overflow-x:auto; padding: 0 20px;">
+      <table class="log-table" id="log-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Ticker</th>
+            <th>Pred</th>
+            <th>Prob</th>
+            <th>Actual</th>
+            <th>✓</th>
+          </tr>
+        </thead>
+        <tbody id="log-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Bottom nav -->
+<nav>
+  <button class="nav-btn active" id="nav-picks" onclick="showPage('picks')">
+    <div class="nav-icon">◈</div>
+    <div class="nav-label">Picks</div>
+  </button>
+  <button class="nav-btn" id="nav-stats" onclick="showPage('stats')">
+    <div class="nav-icon">◎</div>
+    <div class="nav-label">Accuracy</div>
+  </button>
+  <button class="nav-btn" id="nav-log" onclick="showPage('log')">
+    <div class="nav-icon">≡</div>
+    <div class="nav-label">Log</div>
+  </button>
+</nav>
+
+<!-- Ticker detail overlay -->
+<div id="detail-overlay">
+  <div class="detail-header">
+    <div class="back-btn" onclick="closeDetail()">←</div>
+    <div class="detail-ticker" id="detail-title">—</div>
+    <div id="detail-badge"></div>
+  </div>
+  <div class="detail-body">
+    <div class="detail-metrics" id="detail-metrics"></div>
+    <div class="log-section">
+      <div class="log-title">Prediction History</div>
+      <table class="log-table">
+        <thead><tr><th>Target Date</th><th>Pred</th><th>Prob</th><th>Actual</th><th>✓</th></tr></thead>
+        <tbody id="detail-log-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+// Replace this with your Railway backend URL after deploying
+const API = window.BACKEND_URL || 'https://market-predictor.fly.dev';
+
+// ── State ───────────────────────────────────────────────────────────────────
+let allResults = [];
+let currentFilter = 'all';
+let statsData = null;
+
+// ── PWA service worker ───────────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+  if (name === 'stats' && !statsData) loadStats();
+  if (name === 'log') loadLog();
+}
+
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.filter === f);
+  });
+  renderCards();
+}
+
+// ── Data fetching ────────────────────────────────────────────────────────────
+async function apiFetch(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+async function loadScan() {
+  try {
+    setStatus(true);
+    const data = await apiFetch('/api/scan/latest');
+    allResults = data.results || [];
+    const t = data.scan_time;
+    document.getElementById('scan-time-bar').textContent =
+      t ? 'Last scan: ' + new Date(t + 'Z').toLocaleString() : '';
+    renderCards();
+  } catch(e) {
+    setStatus(false);
+    document.getElementById('cards-container').innerHTML =
+      '<div class="empty"><div class="empty-icon">⚡</div><div class="empty-text">Cannot reach server.<br/>Check BACKEND_URL in index.html</div></div>';
+  }
+}
+
+async function loadGlobalStats() {
+  try {
+    const s = await apiFetch('/api/stats');
+    document.getElementById('s-total').textContent = s.total_predictions || 0;
+    document.getElementById('s-acc').textContent =
+      s.resolved > 0 ? s.overall_accuracy + '%' : '—';
+    const t = s.last_scan;
+    document.getElementById('s-scan').textContent =
+      t ? new Date(t + 'Z').toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
+  } catch(e) {}
+}
+
+async function loadStats() {
+  try {
+    const s = await apiFetch('/api/stats');
+    statsData = s;
+    const list = document.getElementById('accuracy-list');
+    document.getElementById('stats-count').textContent = s.by_ticker.length + ' tickers';
+    list.innerHTML = s.by_ticker.map(t => `
+      <div class="accuracy-item">
+        <div>
+          <div class="acc-ticker">${t.ticker}</div>
+          <div class="acc-preds">${t.predictions} predictions</div>
+        </div>
+        <div class="acc-bar-wrap">
+          <div class="acc-bar-bg">
+            <div class="acc-bar-fill" style="width:${t.accuracy}%"></div>
+          </div>
+        </div>
+        <div class="acc-pct">${t.accuracy}%</div>
+      </div>`).join('') || '<div class="empty"><div class="empty-icon">📊</div><div class="empty-text">No resolved predictions yet.</div></div>';
+  } catch(e) {}
+}
+
+async function loadLog() {
+  try {
+    const preds = await apiFetch('/api/predictions?limit=200');
+    const tbody = document.getElementById('log-tbody');
+    tbody.innerHTML = preds.map(p => {
+      const correct = p.correct === 1 ? '<span class="correct-yes">✓</span>'
+                    : p.correct === 0 ? '<span class="correct-no">✗</span>'
+                    : '<span class="correct-pending">·</span>';
+      return `<tr>
+        <td>${p.prediction_date}</td>
+        <td><b>${p.ticker}</b></td>
+        <td>${p.prediction}</td>
+        <td>${(p.prob_up*100).toFixed(0)}%</td>
+        <td>${p.actual || '—'}</td>
+        <td>${correct}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {}
+}
+
+// ── Render cards ─────────────────────────────────────────────────────────────
+function renderCards() {
+  const q = (document.getElementById('search-input').value || '').toUpperCase().trim();
+  let filtered = allResults;
+  if (currentFilter !== 'all') filtered = filtered.filter(r => r.recommendation === currentFilter);
+  if (q) filtered = filtered.filter(r => r.ticker.includes(q));
+
+  const container = document.getElementById('cards-container');
+  if (!filtered.length) {
+    container.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><div class="empty-text">No results</div></div>';
+    return;
+  }
+  container.innerHTML = filtered.map(r => cardHTML(r)).join('');
+}
+
+function cardHTML(r) {
+  const cls  = r.recommendation.toLowerCase();
+  const up   = r.prob_up > 50;
+  const r5c  = r.ret5  > 0 ? 'up' : 'down';
+  const r20c = r.ret20 > 0 ? 'up' : 'down';
+  return `
+  <div class="ticker-card ${cls}" onclick="openDetail('${r.ticker}')">
+    <div class="card-top">
+      <div>
+        <div class="card-ticker">${r.ticker}</div>
+        <div class="card-price">$${r.price != null ? r.price.toFixed(2) : '—'}</div>
+      </div>
+      <div class="card-right">
+        <div class="badge ${cls}">${r.recommendation}</div>
+      </div>
+    </div>
+    <div class="prob-bar-wrap">
+      <div class="prob-bar-bg">
+        <div class="prob-bar-fill ${up?'up':'down'}" style="width:${r.prob_up}%"></div>
+      </div>
+      <div class="prob-pct">${r.prob_up}% ↑</div>
+    </div>
+    <div class="card-bottom" style="margin-top:12px">
+      <div>
+        <div class="card-metric-label">5D RETURN</div>
+        <div class="card-metric-value ${r5c}">${r.ret5 > 0 ? '+' : ''}${r.ret5}%</div>
+      </div>
+      <div>
+        <div class="card-metric-label">20D RETURN</div>
+        <div class="card-metric-value ${r20c}">${r.ret20 > 0 ? '+' : ''}${r.ret20}%</div>
+      </div>
+      <div>
+        <div class="card-metric-label">MODEL ACC</div>
+        <div class="card-metric-value">${r.holdout_acc != null ? r.holdout_acc + '%' : '—'}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── Detail overlay ───────────────────────────────────────────────────────────
+async function openDetail(ticker) {
+  document.getElementById('detail-title').textContent = ticker;
+  const cls = (allResults.find(r => r.ticker === ticker) || {}).recommendation?.toLowerCase() || 'hold';
+  document.getElementById('detail-badge').innerHTML =
+    `<div class="badge ${cls}">${cls.toUpperCase()}</div>`;
+  document.getElementById('detail-metrics').innerHTML =
+    '<div class="skeleton" style="height:60px;grid-column:span 2"></div>';
+  document.getElementById('detail-log-tbody').innerHTML = '';
+  document.getElementById('detail-overlay').classList.add('open');
+
+  try {
+    const d = await apiFetch('/api/ticker/' + ticker);
+    const latest = d.predictions[0] || {};
+    const recCls = latest.recommendation?.toLowerCase() || 'hold';
+    const probPct = latest.prob_up != null ? (latest.prob_up * 100).toFixed(1) : '—';
+    document.getElementById('detail-metrics').innerHTML = `
+      <div class="detail-metric">
+        <div class="detail-metric-label">Prob Up Tomorrow</div>
+        <div class="detail-metric-value ${latest.recommendation==='BUY'?'green':latest.recommendation==='SELL'?'red':'amber'}">${probPct}%</div>
+      </div>
+      <div class="detail-metric">
+        <div class="detail-metric-label">Recommendation</div>
+        <div class="detail-metric-value ${recCls==='buy'?'green':recCls==='sell'?'red':'amber'}">${latest.recommendation || '—'}</div>
+      </div>
+      <div class="detail-metric">
+        <div class="detail-metric-label">Tracked Accuracy</div>
+        <div class="detail-metric-value green">${d.tracked_accuracy != null ? d.tracked_accuracy + '%' : '—'}</div>
+      </div>
+      <div class="detail-metric">
+        <div class="detail-metric-label">Predictions Logged</div>
+        <div class="detail-metric-value">${d.total}</div>
+      </div>`;
+
+    document.getElementById('detail-log-tbody').innerHTML = d.predictions.map(p => {
+      const correct = p.correct === 1 ? '<span class="correct-yes">✓</span>'
+                    : p.correct === 0 ? '<span class="correct-no">✗</span>'
+                    : '<span class="correct-pending">·</span>';
+      return `<tr>
+        <td>${p.target_date}</td>
+        <td>${p.prediction}</td>
+        <td>${(p.prob_up*100).toFixed(0)}%</td>
+        <td>${p.actual || '—'}</td>
+        <td>${correct}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {}
+}
+
+function closeDetail() {
+  document.getElementById('detail-overlay').classList.remove('open');
+}
+
+// ── Scan trigger ─────────────────────────────────────────────────────────────
+async function triggerScan() {
+  const btn = document.getElementById('trigger-btn');
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    await apiFetch('/api/scan/trigger');
+    // Poll for results after 8s
+    setTimeout(() => {
+      loadScan();
+      loadGlobalStats();
+      btn.disabled = false;
+      btn.textContent = 'SCAN';
+    }, 8000);
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = 'SCAN';
+  }
+}
+
+function setStatus(live) {
+  const dot = document.getElementById('status-dot');
+  dot.classList.toggle('live', live);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadScan();
+loadGlobalStats();
+// Auto-refresh every 5 minutes
+setInterval(() => { loadScan(); loadGlobalStats(); }, 5 * 60 * 1000);
+</script>
+</body>
+</html>
