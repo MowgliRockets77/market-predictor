@@ -798,8 +798,8 @@ function cardHTML(r) {
         <div class="card-metric-value ${r20c}">${r.ret20 > 0 ? '+' : ''}${r.ret20}%</div>
       </div>
       <div>
-        <div class="card-metric-label">MODEL ACC</div>
-        <div class="card-metric-value">${r.holdout_acc != null ? r.holdout_acc + '%' : '—'}</div>
+        <div class="card-metric-label">SENTIMENT</div>
+        <div class="card-metric-value">${r.sentiment_label || '—'} ${r.sentiment_score != null ? '(' + r.sentiment_score + ')' : ''}</div>
       </div>
     </div>
   </div>`;
