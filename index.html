@@ -634,7 +634,7 @@ nav {
     <div class="log-section">
       <div class="log-title">Prediction History</div>
       <table class="log-table">
-        <thead><tr><th>Target Date</th><th>Pred</th><th>Prob</th><th>Actual</th><th>✓</th></tr></thead>
+        <thead><tr><th>Target Date</th><th>Pred</th><th>Prob</th><th>Sentiment</th><th>Actual</th><th>✓</th></tr></thead>
         <tbody id="detail-log-tbody"></tbody>
       </table>
     </div>
@@ -798,8 +798,8 @@ function cardHTML(r) {
         <div class="card-metric-value ${r20c}">${r.ret20 > 0 ? '+' : ''}${r.ret20}%</div>
       </div>
       <div>
-        <div class="card-metric-label">SENTIMENT</div>
-        <div class="card-metric-value">${r.sentiment_label || '—'} ${r.sentiment_score != null ? '(' + r.sentiment_score + ')' : ''}</div>
+        <div class="card-metric-label">MODEL ACC</div>
+        <div class="card-metric-value">${r.holdout_acc != null ? r.holdout_acc + '%' : '—'}</div>
       </div>
     </div>
   </div>`;
@@ -808,50 +808,94 @@ function cardHTML(r) {
 // ── Detail overlay ───────────────────────────────────────────────────────────
 async function openDetail(ticker) {
   document.getElementById('detail-title').textContent = ticker;
-  const cls = (allResults.find(r => r.ticker === ticker) || {}).recommendation?.toLowerCase() || 'hold';
+  const scanResult = allResults.find(r => r.ticker === ticker) || {};
+  const cls = scanResult.recommendation?.toLowerCase() || 'hold';
   document.getElementById('detail-badge').innerHTML =
     `<div class="badge ${cls}">${cls.toUpperCase()}</div>`;
   document.getElementById('detail-metrics').innerHTML =
-    '<div class="skeleton" style="height:60px;grid-column:span 2"></div>';
+    '<div class="skeleton" style="height:60px;grid-column:span 2"></div><div class="skeleton" style="height:60px;grid-column:span 2"></div>';
   document.getElementById('detail-log-tbody').innerHTML = '';
   document.getElementById('detail-overlay').classList.add('open');
 
+  // Add sentiment section if not exists
+  if (!document.getElementById('sentiment-section')) {
+    const logSec = document.querySelector('#detail-overlay .log-section');
+    const sentSec = document.createElement('div');
+    sentSec.id = 'sentiment-section';
+    sentSec.className = 'log-section';
+    sentSec.innerHTML = '<div class="log-title">Sentiment Analysis</div><div id="sentiment-body"><div class="skeleton" style="height:80px"></div></div>';
+    logSec.parentNode.insertBefore(sentSec, logSec);
+  }
+  document.getElementById('sentiment-body').innerHTML = '<div class="skeleton" style="height:80px"></div>';
+
   try {
-    const d = await apiFetch('/api/ticker/' + ticker);
+    const [d, s] = await Promise.all([
+      apiFetch('/api/ticker/' + ticker),
+      apiFetch('/api/ticker/' + ticker + '/sentiment').catch(() => null)
+    ]);
     const latest = d.predictions[0] || {};
     const recCls = latest.recommendation?.toLowerCase() || 'hold';
     const probPct = latest.prob_up != null ? (latest.prob_up * 100).toFixed(1) : '—';
+    const sentScore = scanResult.sentiment_score != null ? scanResult.sentiment_score : '—';
+    const sentLabel = scanResult.sentiment_label || '—';
+    const sentCls = sentLabel === 'POSITIVE' ? 'green' : sentLabel === 'NEGATIVE' ? 'red' : 'amber';
+
     document.getElementById('detail-metrics').innerHTML = `
       <div class="detail-metric">
         <div class="detail-metric-label">Prob Up Tomorrow</div>
-        <div class="detail-metric-value ${latest.recommendation==='BUY'?'green':latest.recommendation==='SELL'?'red':'amber'}">${probPct}%</div>
+        <div class="detail-metric-value ${latest.recommendation === 'BUY' ? 'green' : latest.recommendation === 'SELL' ? 'red' : 'amber'}">${probPct}%</div>
       </div>
       <div class="detail-metric">
         <div class="detail-metric-label">Recommendation</div>
-        <div class="detail-metric-value ${recCls==='buy'?'green':recCls==='sell'?'red':'amber'}">${latest.recommendation || '—'}</div>
+        <div class="detail-metric-value ${recCls === 'buy' ? 'green' : recCls === 'sell' ? 'red' : 'amber'}">${latest.recommendation || '—'}</div>
       </div>
       <div class="detail-metric">
         <div class="detail-metric-label">Tracked Accuracy</div>
-        <div class="detail-metric-value green">${d.tracked_accuracy != null ? d.tracked_accuracy + '%' : '—'}</div>
+        <div class="detail-metric-value green">${d.tracked_accuracy != null ? d.tracked_accuracy + '%' : 'Building…'}</div>
       </div>
       <div class="detail-metric">
-        <div class="detail-metric-label">Predictions Logged</div>
-        <div class="detail-metric-value">${d.total}</div>
+        <div class="detail-metric-label">Recent (last 10)</div>
+        <div class="detail-metric-value"><span class="correct-yes">✓${d.recent_correct || 0}</span> <span class="correct-no">✗${d.recent_wrong || 0}</span></div>
+      </div>
+      <div class="detail-metric">
+        <div class="detail-metric-label">Sentiment Score</div>
+        <div class="detail-metric-value ${sentCls}">${sentScore}</div>
+      </div>
+      <div class="detail-metric">
+        <div class="detail-metric-label">Sentiment</div>
+        <div class="detail-metric-value ${sentCls}">${sentLabel}</div>
       </div>`;
+
+    if (s) {
+      const rows = s.source_breakdown.map(b => {
+        const sc = b.score >= 0.05 ? 'correct-yes' : b.score <= -0.05 ? 'correct-no' : 'correct-pending';
+        return `<tr><td>${b.source.toUpperCase()}</td><td><span class="${sc}">${b.score > 0 ? '+' : ''}${b.score}</span></td><td>${b.label}</td><td>${b.headlines}</td></tr>`;
+      }).join('');
+      document.getElementById('sentiment-body').innerHTML = `
+        <div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6">${s.reason}</div>
+        <table class="log-table">
+          <thead><tr><th>Source</th><th>Score</th><th>Sentiment</th><th>Headlines</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    } else {
+      document.getElementById('sentiment-body').innerHTML = '<div style="color:var(--text3);font-size:12px;padding:12px 0">Tap again to load live sentiment</div>';
+    }
 
     document.getElementById('detail-log-tbody').innerHTML = d.predictions.map(p => {
       const correct = p.correct === 1 ? '<span class="correct-yes">✓</span>'
                     : p.correct === 0 ? '<span class="correct-no">✗</span>'
                     : '<span class="correct-pending">·</span>';
+      const sent = p.sentiment_label ? `<span style="font-size:10px;color:var(--text3)">${p.sentiment_label}</span>` : '—';
       return `<tr>
         <td>${p.target_date}</td>
         <td>${p.prediction}</td>
-        <td>${(p.prob_up*100).toFixed(0)}%</td>
+        <td>${(p.prob_up * 100).toFixed(0)}%</td>
+        <td>${sent}</td>
         <td>${p.actual || '—'}</td>
         <td>${correct}</td>
       </tr>`;
     }).join('');
-  } catch(e) {}
+  } catch(e) { console.error(e); }
 }
 
 function closeDetail() {
