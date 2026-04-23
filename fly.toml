@@ -2,13 +2,23 @@ app = 'market-predictor'
 primary_region = 'ewr'
 
 [build]
+  dockerfile = "Dockerfile"
 
-[http_service]
+[processes]
+  app = "uvicorn backend.main:app --host 0.0.0.0 --port 8080"
+
+[[services]]
   internal_port = 8080
-  force_https = true
-  auto_stop_machines = 'off'
-  auto_start_machines = true
-  min_machines_running = 1
+  protocol = "tcp"
+  processes = ["app"]
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
 
 [[vm]]
   memory = '1gb'
