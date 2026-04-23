@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 import yfinance as yf
+from curl_cffi import requests as cffi_requests
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
@@ -14,16 +15,7 @@ from .database import save_prediction, update_actuals_for_ticker
 
 logger = logging.getLogger(__name__)
 
-# Fix for yfinance being blocked on cloud servers
-yf.utils.get_json = lambda url, proxy=None, session=None: {}
-
-import requests
-_SESSION = requests.Session()
-_SESSION.headers.update({
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-})
+SESSION = cffi_requests.Session(impersonate="chrome110")
 
 TICKERS = [
     "AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA","AMD","AVGO","NFLX",
@@ -76,7 +68,7 @@ def train_and_predict(feat_df):
 
 def process_ticker(ticker, scan_time):
     try:
-        tk = yf.Ticker(ticker, session=_SESSION)
+        tk = yf.Ticker(ticker, session=SESSION)
         df = tk.history(period="2y", interval="1d", auto_adjust=True)
         if df.empty:
             return None
