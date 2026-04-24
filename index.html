@@ -927,7 +927,6 @@ async function triggerScan() {
   try {
     await apiFetch('/api/scan/trigger');
     let attempts = 0;
-    const prevResults = allResults.length;
     const poll = setInterval(async () => {
       attempts++;
       try {
