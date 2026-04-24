@@ -558,7 +558,6 @@ nav {
     </div>
     <div class="header-right">
       <div class="status-dot" id="status-dot"></div>
-      <button class="scan-btn" id="theme-btn" onclick="toggleTheme()" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border)">◑</button>
       <button class="scan-btn" id="trigger-btn" onclick="triggerScan()">SCAN</button>
     </div>
   </header>
@@ -924,15 +923,28 @@ async function triggerScan() {
   const btn = document.getElementById('trigger-btn');
   btn.disabled = true;
   btn.textContent = '…';
+  document.getElementById('scan-time-bar').textContent = 'Scanning all stocks… takes 2-3 min';
   try {
     await apiFetch('/api/scan/trigger');
-    // Poll for results after 8s
-    setTimeout(() => {
-      loadScan();
-      loadGlobalStats();
-      btn.disabled = false;
-      btn.textContent = 'SCAN';
-    }, 8000);
+    let attempts = 0;
+    const prevResults = allResults.length;
+    const poll = setInterval(async () => {
+      attempts++;
+      try {
+        const data = await apiFetch('/api/scan/latest');
+        if (data.results && data.results.length > 0) {
+          allResults = data.results;
+          const t = data.scan_time;
+          document.getElementById('scan-time-bar').textContent = t ? 'Last scan: ' + new Date(t + 'Z').toLocaleString() : '';
+          renderCards();
+          loadGlobalStats();
+          clearInterval(poll);
+          btn.disabled = false;
+          btn.textContent = 'SCAN';
+        }
+      } catch(e) {}
+      if (attempts > 36) { clearInterval(poll); btn.disabled = false; btn.textContent = 'SCAN'; }
+    }, 10000);
   } catch(e) {
     btn.disabled = false;
     btn.textContent = 'SCAN';
@@ -945,16 +957,10 @@ function setStatus(live) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-function toggleTheme(){
-  const isLight=document.body.classList.toggle('light');
-  localStorage.setItem('theme',isLight?'light':'dark');
-  document.getElementById('theme-btn').textContent=isLight?'◐':'◑';
-}
-if(localStorage.getItem('theme')==='light'){document.body.classList.add('light');}
 loadScan();
 loadGlobalStats();
 // Auto-refresh every 5 minutes
-setInterval(() => { loadScan(); loadGlobalStats(); }, 5 * 60 * 1000);
+setInterval(() => { loadScan(); loadGlobalStats(); }, 2 * 60 * 1000);
 </script>
 </body>
 </html>
